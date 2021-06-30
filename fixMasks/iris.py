@@ -33,7 +33,7 @@ def load_raw_dataset(dataset_name: str):
 
 class IrisImage:
     def __init__(self, data: np.ndarray, mask: np.ndarray,
-                 shape=_OSIRIS_SHAPE + (1,)):
+                 shape=_OSIRIS_SHAPE + (1,), name=''):
         """Class for managing the iris and its mask. Includes undo and
         redo actions."""
         self.data = data
@@ -41,15 +41,20 @@ class IrisImage:
         self.shape = shape
         self.undo_stack = []
         self.redo_stack = []
+        self.name = name
 
-    def get_visualization(self):
-        """Visualizes the mask on the iris image. Allows certain
-        transparency so the iris can still be seen."""
+    def get_visualization(self, alpha=0.5):
+        """Visualizes the mask on the iris image. Alpha sets the
+        transparency of the mask, with 1 being solid and 0 being
+        invisible."""
         visualization = self.data.reshape(self.shape)
         visualization = np.tile(visualization, [1, 1, 3])
         mask = self.mask.reshape(self.shape[:2])
         # Keep part of the base for visualization
-        visualization[mask == 1, 1] = 255  # Instead of [0, 255, 0]
+        base_values = visualization[mask == 1, :]
+        mask_values = np.tile([[0, 255, 0]], (base_values.shape[0], 1))
+        visualization[mask == 1, :] = ((1 - alpha)*base_values
+                                       + alpha*mask_values)
         return visualization
 
     def create_circular_mask(self, center, radius) -> np.ndarray:
@@ -69,7 +74,7 @@ class IrisImage:
         self.undo_stack.append(self.mask.copy())
         self.redo_stack = []
         draw_mask = self.create_circular_mask(coords, radius)
-        self.mask[draw_mask.flatten()] = value
+        self.mask[0, draw_mask.flatten()] = value
 
     def draw_on_mask(self, coords, radius):
         """Draws a circle of the specified radius on the provided (y,x)
@@ -115,7 +120,7 @@ class IrisDataset:
                 # Index is set -1, so next image is the right one
                 self.cur = i
                 break
-        self.first = True
+        self._first = True  # Next image will be the first since init
         self.irisimage = None
 
     def check_status(self, scores: list = None):
@@ -130,7 +135,7 @@ class IrisDataset:
 
     def get_irisimage(self):
         """Generates and returns the current Iris Image. Usually called
-        from next()."""
+        from next() or previous()."""
         row = self.df.iloc[self.cur]
         key = row.dataset
         index = self.data[key]['list'] == row.filename
@@ -140,7 +145,8 @@ class IrisDataset:
             mask = self.masks[self.cur, :]
         else:
             mask = self.data[key]['masks'][index, :]
-        self.irisimage = IrisImage(data, mask)
+        self.irisimage = IrisImage(data, mask, name=row.filename)
+
         return self.irisimage
 
     def save(self):
@@ -157,25 +163,25 @@ class IrisDataset:
     def next(self, skip: list = None):
         """Returns the next Iris Image. If a skip list is supplied,
         images with a score that is on the list will be skipped"""
-        if self.first:
-            self.first = False
-        else:
-            self.cur += 1
+        if self._first:
+            self._first = False
+            return self.get_irisimage()
+        self.cur = (self.cur + 1) % self.n_images
         if skip is not None:
             while self.df.score.iloc[self.cur] in skip:
-                self.cur += 1
+                self.cur = (self.cur + 1) % self.n_images
 
         return self.get_irisimage()
 
     def previous(self, skip: list = None):
         """Returns the previous Iris Image. If a skip list is supplied,
         images with a score that is on the list will be skipped"""
-        if self.first:
-            self.first = False
-        else:
-            self.cur -= 1
+        if self._first:
+            self._first = False
+            return self.get_irisimage()
+        self.cur = (self.cur - 1) % self.n_images
         if skip is not None:
             while self.df.score.iloc[self.cur] in skip:
-                self.cur -= 1
+                self.cur = (self.cur - 1) % self.n_images
 
         return self.get_irisimage()
