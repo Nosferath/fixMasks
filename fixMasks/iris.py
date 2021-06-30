@@ -113,9 +113,20 @@ class IrisDataset:
         for i in range(self.n_images):
             if not self.df.checked.iloc[i]:
                 # Index is set -1, so next image is the right one
-                self.cur = i - 1
+                self.cur = i
                 break
+        self.first = True
         self.irisimage = None
+
+    def check_status(self, scores: list = None):
+        """Returns True if all images have been checked, or False other-
+        wise. If a scores list is supplied, this will only check if
+        irises with these scores have been checked."""
+        if scores is None:
+            to_check = self.df
+        else:
+            to_check = self.df[self.df.score.isin(scores)]
+        return to_check.checked.all()
 
     def get_irisimage(self):
         """Generates and returns the current Iris Image. Usually called
@@ -146,9 +157,25 @@ class IrisDataset:
     def next(self, skip: list = None):
         """Returns the next Iris Image. If a skip list is supplied,
         images with a score that is on the list will be skipped"""
-        self.cur += 1
+        if self.first:
+            self.first = False
+        else:
+            self.cur += 1
         if skip is not None:
             while self.df.score.iloc[self.cur] in skip:
                 self.cur += 1
+
+        return self.get_irisimage()
+
+    def previous(self, skip: list = None):
+        """Returns the previous Iris Image. If a skip list is supplied,
+        images with a score that is on the list will be skipped"""
+        if self.first:
+            self.first = False
+        else:
+            self.cur -= 1
+        if skip is not None:
+            while self.df.score.iloc[self.cur] in skip:
+                self.cur -= 1
 
         return self.get_irisimage()

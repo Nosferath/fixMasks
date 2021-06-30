@@ -41,9 +41,6 @@ def main():
         if event == sg.WIN_CLOSED:
             break
     gui.window.close()
-    # TODO resume where I was left
-
-
 
 
 if __name__ == '__main__':
