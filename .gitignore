@@ -1,0 +1,8 @@
+.idea/
+*.pyc
+__pycache__/
+data/
+check_masks.csv
+check_masks_combined*.csv
+check_masks_irisbee.csv
+Rapid-Labelling-Tool.py
