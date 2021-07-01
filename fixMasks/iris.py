@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from PIL import Image
 from scipy.io import loadmat
 
 
@@ -10,6 +11,8 @@ _RIGHT_OSIRIS_DATASET = 'right_480x80'
 _OSIRIS_SHAPE = (80, 480)
 _CHECK_MASKS_CSV = 'check_masks_full.csv'
 _MASKS_FILE = 'new_masks.npz'
+_ORIGINAL_LEFT_PATH = Path('S:/NUND_left/')
+_ORIGINAL_RIGHT_PATH = Path('S:/NUND_right/')
 
 
 def load_raw_dataset(dataset_name: str):
@@ -21,13 +24,18 @@ def load_raw_dataset(dataset_name: str):
     mask_array = data_mat['maskArray']
     images_list = data_mat['imagesList']
     images_list = [
-        images_list[i, 0][0][0] for i in range(images_list.shape[0])]
-    images_list = list(map(lambda x: x.split('_')[0], images_list))
+        images_list[i, 0][0][0] for i in range(images_list.shape[0])
+    ]
+    images_list = np.array(list(map(lambda x: x.split('_')[0], images_list)))
+    data_array.flags.writeable = False
+    label_array.flags.writeable = False
+    mask_array.flags.writeable = False
+    images_list.flags.writeable = False
     return {
         'x': data_array,
         'y': label_array,
         'masks': mask_array,
-        'list': np.array(images_list)
+        'list': images_list
     }
 
 
@@ -35,9 +43,14 @@ class IrisImage:
     def __init__(self, data: np.ndarray, mask: np.ndarray,
                  shape=_OSIRIS_SHAPE + (1,), name='', max_queue=20):
         """Class for managing the iris and its mask. Includes undo and
-        redo actions."""
-        self.data = data
-        self.mask = mask
+        redo actions.
+        """
+        if len(data.shape) == 2:
+            self.data = data[0, :]
+        else:
+            self.data = data
+        self.mask = None
+        self.set_mask(mask)
         self.shape = shape
         self.undo_stack = []
         self.redo_stack = []
@@ -47,7 +60,8 @@ class IrisImage:
     def get_visualization(self, alpha=0.5):
         """Visualizes the mask on the iris image. Alpha sets the
         transparency of the mask, with 1 being solid and 0 being
-        invisible."""
+        invisible.
+        """
         visualization = self.data.reshape(self.shape)
         visualization = np.tile(visualization, [1, 1, 3])
         mask = self.mask.reshape(self.shape[:2])
@@ -60,7 +74,8 @@ class IrisImage:
 
     def create_circular_mask(self, center, radius) -> np.ndarray:
         """Generates a circular mask. Used for drawing on masks.
-        Center is (y,x)."""
+        Center is (y,x).
+        """
         h, w = self.shape[:2]
         y, x = np.ogrid[:h, :w]
         dist_from_center: np.ndarray = np.sqrt(
@@ -71,18 +86,21 @@ class IrisImage:
     def _base_draw_on_mask(self, coords, radius, value):
         """Applies the specified value onto a circular area in the mask.
         The area is defined by (y,x) coords of the center, and the
-        radius of the circle."""
+        radius of the circle.
+        """
         draw_mask = self.create_circular_mask(coords, radius)
-        self.mask[0, draw_mask.flatten()] = value
+        self.mask[draw_mask.flatten()] = value
 
     def draw_on_mask(self, coords, radius):
         """Draws a circle of the specified radius on the provided (y,x)
-        coordinates."""
+        coordinates.
+        """
         self._base_draw_on_mask(coords, radius, 1)
 
     def erase_on_mask(self, coords, radius):
         """Deletes a circle of the specified radius on the provided
-        (y,x) coordinates."""
+        (y,x) coordinates.
+        """
         self._base_draw_on_mask(coords, radius, 0)
 
     def undo(self):
@@ -99,11 +117,18 @@ class IrisImage:
 
     def save_state(self):
         """Used when starting a new drawing to save the current mask
-        state for the undo stack."""
+        state for the undo stack.
+        """
         self.undo_stack.append(self.mask.copy())
         if len(self.undo_stack) > self._max_queue:
             del self.undo_stack[0]
         self.redo_stack = []
+
+    def set_mask(self, mask):
+        if len(mask.shape) == 2:
+            self.mask = mask[0, :]
+        else:
+            self.mask = mask
 
 
 class IrisDataset:
@@ -123,7 +148,7 @@ class IrisDataset:
             self.masks = np.load(_MASKS_FILE)
         self.cur = None
         for i in range(self.n_images):
-            if not self.df.checked.iloc[i]:
+            if not self.df.checked.loc[i]:
                 # Index is set -1, so next image is the right one
                 self.cur = i
                 break
@@ -133,62 +158,96 @@ class IrisDataset:
     def check_status(self, scores: list = None):
         """Returns True if all images have been checked, or False other-
         wise. If a scores list is supplied, this will only check if
-        irises with these scores have been checked."""
+        irises with these scores have been checked.
+        """
         if scores is None:
             to_check = self.df
         else:
             to_check = self.df[self.df.score.isin(scores)]
         return to_check.checked.all()
 
+    def is_image_checked(self):
+        """Returns whether the current Iris Image has been checked."""
+        return self.df.loc[self.cur, 'checked']
+
     def get_irisimage(self):
         """Generates and returns the current Iris Image. Usually called
-        from next() or previous()."""
-        row = self.df.iloc[self.cur]
+        from next() or previous().
+        """
+        row = self.df.loc[self.cur]
         key = row.dataset
         index = self.data[key]['list'] == row.filename
         data = self.data[key]['x'][index, :]
         # Load mask if it has been previously checked or modified
-        if np.sum(self.masks[self.cur, :]) or self.df.checked.iloc[self.cur]:
-            mask = self.masks[self.cur, :]
+        if np.sum(self.masks[self.cur, :]) or self.df.checked.loc[self.cur]:
+            mask = self.masks[self.cur, :].copy()
         else:
-            mask = self.data[key]['masks'][index, :]
+            mask = self.data[key]['masks'][index, :].copy()
         self.irisimage = IrisImage(data, mask, name=row.filename)
 
         return self.irisimage
 
-    def save(self):
-        """Saves the current mask into the mask array, and saves the
-        array to its file. Also, sets current mask as checked."""
+    def save(self, checked=True, to_disk=True):
+        """Saves the current mask into the mask array. If checked is
+        true, sets the current mask as checked in the DF. If to_disk is
+        True, saves the mask array and DF to their corresponding files.
+        """
         if self.irisimage is None:
             raise ValueError('There is no current Iris Image')
-        self.masks[self.cur, :] = self.irisimage.mask
-        np.save(_MASKS_FILE, self.masks)
-
-        self.df.checked.iloc[self.cur] = True
-        self.df.to_csv(_CHECK_MASKS_CSV)
+        self.masks[self.cur, :] = self.irisimage.mask.copy()
+        if checked:
+            self.df.loc[self.cur, 'checked'] = True
+        if to_disk:
+            np.save(_MASKS_FILE, self.masks)
+            self.df.to_csv(_CHECK_MASKS_CSV)
 
     def next(self, skip: list = None):
         """Returns the next Iris Image. If a skip list is supplied,
-        images with a score that is on the list will be skipped"""
+        images with a score that is on the list will be skipped.
+        """
         if self._first:
             self._first = False
             return self.get_irisimage()
         self.cur = (self.cur + 1) % self.n_images
         if skip is not None:
-            while self.df.score.iloc[self.cur] in skip:
+            while self.df.score.loc[self.cur] in skip:
                 self.cur = (self.cur + 1) % self.n_images
 
         return self.get_irisimage()
 
     def previous(self, skip: list = None):
         """Returns the previous Iris Image. If a skip list is supplied,
-        images with a score that is on the list will be skipped"""
+        images with a score that is on the list will be skipped.
+        """
         if self._first:
             self._first = False
             return self.get_irisimage()
         self.cur = (self.cur - 1) % self.n_images
         if skip is not None:
-            while self.df.score.iloc[self.cur] in skip:
+            while self.df.score.loc[self.cur] in skip:
                 self.cur = (self.cur - 1) % self.n_images
 
         return self.get_irisimage()
+
+    def reset_mask(self):
+        """Resets the current mask to its original state.
+        Triggers save_state.
+        """
+        self.irisimage.save_state()
+        row = self.df.loc[self.cur]
+        key = row.dataset
+        index = self.data[key]['list'] == row.filename
+        mask = self.data[key]['masks'][index, :]
+        self.irisimage.set_mask(mask)
+
+    def get_original_image(self):
+        """Returns a PIL image containing the original not-normalized
+        iris image.
+        """
+        row = self.df.loc[self.cur]
+        if row.dataset == 'left':
+            path = _ORIGINAL_LEFT_PATH
+        else:
+            path = _ORIGINAL_RIGHT_PATH
+        filename = row.filename + '.tiff'
+        return Image.open(path / filename)
