@@ -41,7 +41,8 @@ def load_raw_dataset(dataset_name: str):
 
 class IrisImage:
     def __init__(self, data: np.ndarray, mask: np.ndarray,
-                 shape=_OSIRIS_SHAPE + (1,), name='', max_queue=20):
+                 shape=_OSIRIS_SHAPE + (1,), name='', score=None,
+                 max_queue=20):
         """Class for managing the iris and its mask. Includes undo and
         redo actions.
         """
@@ -55,6 +56,7 @@ class IrisImage:
         self.undo_stack = []
         self.redo_stack = []
         self.name = name
+        self.score = score
         self._max_queue = max_queue
 
     def get_visualization(self, alpha=0.5):
@@ -183,7 +185,8 @@ class IrisDataset:
             mask = self.masks[self.cur, :].copy()
         else:
             mask = self.data[key]['masks'][index, :].copy()
-        self.irisimage = IrisImage(data, mask, name=row.filename)
+        self.irisimage = IrisImage(data, mask, name=row.filename,
+                                   score=row.score)
 
         return self.irisimage
 
