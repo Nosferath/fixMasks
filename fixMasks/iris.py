@@ -33,7 +33,7 @@ def load_raw_dataset(dataset_name: str):
 
 class IrisImage:
     def __init__(self, data: np.ndarray, mask: np.ndarray,
-                 shape=_OSIRIS_SHAPE + (1,), name=''):
+                 shape=_OSIRIS_SHAPE + (1,), name='', max_queue=20):
         """Class for managing the iris and its mask. Includes undo and
         redo actions."""
         self.data = data
@@ -42,6 +42,7 @@ class IrisImage:
         self.undo_stack = []
         self.redo_stack = []
         self.name = name
+        self._max_queue = max_queue
 
     def get_visualization(self, alpha=0.5):
         """Visualizes the mask on the iris image. Alpha sets the
@@ -71,8 +72,6 @@ class IrisImage:
         """Applies the specified value onto a circular area in the mask.
         The area is defined by (y,x) coords of the center, and the
         radius of the circle."""
-        self.undo_stack.append(self.mask.copy())
-        self.redo_stack = []
         draw_mask = self.create_circular_mask(coords, radius)
         self.mask[0, draw_mask.flatten()] = value
 
@@ -97,6 +96,14 @@ class IrisImage:
         if self.redo_stack:
             self.undo_stack.append(self.mask.copy())
             self.mask = self.redo_stack.pop()
+
+    def save_state(self):
+        """Used when starting a new drawing to save the current mask
+        state for the undo stack."""
+        self.undo_stack.append(self.mask.copy())
+        if len(self.undo_stack) > self._max_queue:
+            del self.undo_stack[0]
+        self.redo_stack = []
 
 
 class IrisDataset:

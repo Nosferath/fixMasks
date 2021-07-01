@@ -1,5 +1,5 @@
-import base64
 import io
+import tracemalloc
 
 # import cv2
 import numpy as np
@@ -31,9 +31,11 @@ class GUI:
     def __init__(self, dataset: IrisDataset):
         self.dataset = dataset
         self.image = None
+        self.drawn_image = None
         self.layout = [[sg.Text('Image name', key='name')],
-                       [sg.Graph((960, 160), (0, 80), (480, 0),
-                                 enable_events=True, key='image')],
+                       [sg.Graph((960, 160), (0, 80), (480, 0), background_color='white',
+                                 drag_submits=True, enable_events=True,
+                                 key='image')],
                        [sg.Button('Draw', disabled=True), sg.Button('Erase'),
                         sg.Button('Undo'), sg.Button('Redo'),
                         sg.Button('Previous'), sg.Button('Next')],
@@ -47,14 +49,19 @@ class GUI:
         self.next()  # To initialize dataset and image
         self.draw_mode = True
         self.radius = 4
+        self.next_draw_saves = True  # False when in the middle of a drawing
 
     def update_image(self):
+        if self.drawn_image is not None:
+            self.window['image'].delete_figure(self.drawn_image)
         image = self.image.get_visualization(self.alpha)
         image = Image.fromarray(image).resize((960, 160), Image.NEAREST)
         with io.BytesIO() as output:
-            image.save(output, format='PNG')
+            image.save(output, format='PPM')
             data = output.getvalue()
-        self.window['image'].draw_image(data=data, location=(0, 0))
+        self.drawn_image = self.window['image'].draw_image(data=data,
+                                                           location=(0, 0))
+        # print(self.drawn_image)
         self.window['name'].update(self.image.name)
 
     def next(self, skip: list = None):
@@ -74,9 +81,11 @@ class GUI:
 
     def undo(self):
         self.image.undo()
+        self.update_image()
 
     def redo(self):
         self.image.redo()
+        self.update_image()
 
     def toggle_mode(self):
         self.draw_mode = not self.draw_mode
@@ -89,17 +98,24 @@ class GUI:
 
     def click_image(self, coords):
         """Draw or erase on the mask. Coords are (x, y)."""
+        if self.next_draw_saves:
+            self.next_draw_saves = False
+            self.image.save_state()
         if self.draw_mode:
             self.image.draw_on_mask((coords[1], coords[0]), self.radius)
         else:
             self.image.erase_on_mask((coords[1], coords[0]), self.radius)
         self.update_image()
 
+    def mouse_up(self):
+        """Release the mouse button, which means a drawing ended."""
+        self.next_draw_saves = True
+
 
 def main():
     gui = GUI(IrisDataset())
     while True:
-        event, values = gui.window.read()
+        event, values = gui.window.read(timeout=0)
         if event == sg.WIN_CLOSED:
             break
         elif event in ('Draw', 'Erase'):
@@ -116,12 +132,12 @@ def main():
             gui.update_alpha(values['alpha'])
         elif event == 'image':
             gui.click_image(values['image'])
+        elif event == 'image+UP':
+            gui.mouse_up()
 
-        # TODO click-mask interaction
-        # TODO Buttons for draw size and mode (draw/erase)
+        # TODO Buttons for draw size
         # TODO mouse wheel for size
         # TODO right click for swapping draw/erase
-        # TODO Buttons for next and previous
         # TODO measure time per image
 
         if gui.check_status():
@@ -131,4 +147,11 @@ def main():
 
 
 if __name__ == '__main__':
+    tracemalloc.start()
     main()
+    snapshot = tracemalloc.take_snapshot()
+    top_stats = snapshot.statistics('lineno')
+
+    print("[ Top 10 ]")
+    for stat in top_stats[:10]:
+        print(stat)
