@@ -147,7 +147,7 @@ class IrisDataset:
         if not Path(_MASKS_FILE).exists():
             self.masks = np.zeros((self.n_images, np.prod(_OSIRIS_SHAPE)))
         else:
-            self.masks = np.load(_MASKS_FILE)
+            self.masks = np.load(_MASKS_FILE)['masks']
         self.cur = None
         for i in range(self.n_images):
             if not self.df.checked.loc[i]:
@@ -201,7 +201,7 @@ class IrisDataset:
         if checked:
             self.df.loc[self.cur, 'checked'] = True
         if to_disk:
-            np.save(_MASKS_FILE, self.masks)
+            np.savez_compressed(_MASKS_FILE, masks=self.masks)
             self.df.to_csv(_CHECK_MASKS_CSV)
 
     def next(self, skip: list = None):
@@ -254,3 +254,6 @@ class IrisDataset:
             path = _ORIGINAL_RIGHT_PATH
         filename = row.filename + '.tiff'
         return Image.open(path / filename)
+
+    def get_cur_position(self):
+        return '{:04n}/{}'.format(self.cur + 1, self.n_images)

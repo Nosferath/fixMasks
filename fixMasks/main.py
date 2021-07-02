@@ -57,6 +57,10 @@ class Timer:
             self._times.append(time.time() - self._start_t)
             self._start_t = None
 
+    def reset(self):
+        self._times = []
+        self._start_t = None
+
     @staticmethod
     def _format_time(seconds):
         """Returns the time formatted as hh:mm:ss"""
@@ -79,9 +83,11 @@ class Timer:
 
     def get_all(self):
         """Returns a list with all times, formatted."""
-        if len(self._times):
-            return [self._format_time(s) for s in self._times]
-        return [self._format_time(0)]
+        return [self._format_time(s) for s in self._times]
+
+    def has_started(self):
+        """Return True if the timer has been started"""
+        return self._start_t is not None
 
 
 class CheckedText(sg.T):
@@ -107,33 +113,56 @@ class GUI:
         self.alpha = 0.5  # Alpha value for visualization
         self.draw_mode = True
         self.next_draw_saves = True  # False when in the middle of a drawing
-        draw_column = [[sg.T('Radius:'), sg.Spin(
-            list(range(1, 11)), 5, readonly=True, key='-RADIUS-'
-                        ), sg.B('Draw', disabled=True), sg.B('Erase')],
-                       [sg.B('Undo'), sg.B('Redo'), sg.B('Reset')],
-                       [sg.T('Mask opacity:')],
-                       [sg.Slider((0.0, 1.0), default_value=0.5,
-                                  resolution=0.1, orientation='h',
-                                  enable_events=True, key='-ALPHA-')]]
-        nav_column1 = [[sg.B('Previous'), sg.B('Next')],
-                       [sg.B('Save', s=(12, 1))],
-                       [sg.Checkbox('Autosave', default=True, key='-AUTO-',
-                                    tooltip='Save all changes to mask array '
-                                            '(does not save to disk)')]]
-        nav_column2 = [[sg.Checkbox('0', key='-SKIP0-'),
-                        sg.Checkbox('1', key='-SKIP1-'),
-                        sg.Checkbox('2', key='-SKIP2-')]]
-        nav_column = [*nav_column1,
-                      [sg.Frame('Skip options', nav_column2)]]
-        orig_column = [[sg.Image(key='-ORIGINAL-')]]
-        layout = [[sg.T('Current image: None. Score: None.', s=(35, 1),
-                        key='-NAME-'),
-                   CheckedText()],
-                  [sg.Graph((960, 160), (0, 80), (480, 0), drag_submits=True,
-                            enable_events=True, key='-IMAGE-')],
-                  [sg.Frame('Draw tools', draw_column, vertical_alignment='t'),
-                   sg.Column(nav_column, vertical_alignment='t'),
-                   sg.Column(orig_column)]]
+        self.timer = Timer()
+        # Create layout
+        timer_menu = [
+            [sg.T('00:00:00', font=('Helvetica', 30), key='-TIME-')],
+            [sg.T('Average time: 00:00:00', s=(20, 1), key='-AVG-')],
+            [sg.B('Start'), sg.B('Stop'), sg.B('Reset', key='-RESETTIMER-')],
+            [sg.Multiline('', s=(20, 13), write_only=True, key='-TIMELIST-')]
+        ]
+        draw_column = [
+            [sg.T('Radius:'), sg.Spin(
+                list(range(1, 11)), 5, readonly=True, key='-RADIUS-'
+            ), sg.B('Draw', disabled=True), sg.B('Erase')],
+            [sg.B('Undo'), sg.B('Redo'), sg.B('Reset', key='-RESETMASK-')],
+            [sg.T('Mask opacity:')],
+            [sg.Slider((0.0, 1.0), default_value=0.5, resolution=0.1,
+                       orientation='h', enable_events=True, key='-ALPHA-')]
+        ]
+        nav_column1 = [
+            [sg.B('Previous'), sg.B('Next')],
+            [sg.B('Save', s=(12, 1))],
+            [sg.Checkbox(
+                'Autosave', default=True, key='-AUTO-',
+                tooltip='Save all changes to mask array '
+                        '(does not save to disk)'
+            )]
+        ]
+        nav_column2 = [
+            [sg.Checkbox('0', key='-SKIP0-'), sg.Checkbox('1', key='-SKIP1-'),
+             sg.Checkbox('2', key='-SKIP2-')]
+        ]
+        nav_column = [
+            *nav_column1,
+            [sg.Frame('Skip options', nav_column2)]
+        ]
+        orig_column = [
+            [sg.Image(key='-ORIGINAL-')]
+        ]
+        layout = [
+            [sg.T('Current image: None.\tScore: None.\t   0/0', s=(40, 1),
+                  key='-NAME-'),
+             CheckedText(), sg.T('', text_color='#00FF00', key='-FINISHED-')],
+            [sg.Graph((960, 160), (0, 80), (480, 0), drag_submits=True,
+                      enable_events=True, key='-IMAGE-')],
+            [sg.Column(
+                [[sg.Frame('Draw tools', draw_column, vertical_alignment='t'),
+                  sg.Column(nav_column, vertical_alignment='t')],
+                 [sg.Frame('Timer', timer_menu)]],
+                element_justification='center'),
+             sg.Column(orig_column)]
+        ]
         self.window = sg.Window('Mask Fixer', layout=layout,
                                 finalize=True, return_keyboard_events=True)
         # Set mouse bindings
@@ -153,8 +182,11 @@ class GUI:
         # Set image and text
         self.drawn_image = self.window['-IMAGE-'].draw_image(
             data=data, location=(0, 0))
-        self.window['-NAME-'].update('Current image: ' + self.image.name
-                                     + '. Score: ' + str(self.image.score))
+        self.window['-NAME-'].update(
+            'Current image: ' + self.image.name
+            + '\tScore: ' + str(self.image.score)
+            + '\t   ' + self.dataset.get_cur_position()
+        )
         self.window['-CHECKED-'].set_checked(self.dataset.is_image_checked())
         # Set original image
         data = image_to_bytes(self.dataset.get_original_image())
@@ -244,12 +276,34 @@ class GUI:
             self.dataset.save(to_disk=False)
             print('[DEBUG] Save triggered.')
         self.update_image()
+        fnshd = [str(i) for i in range(3) if self.check_status([i])]
+        if fnshd:
+            self.window['-FINISHED-'].update('FINISHED: ' + ','.join(fnshd))
+
+    def update_timer(self):
+        if self.timer.has_started():
+            self.window['-TIME-'].update(self.timer.get_current())
+
+    def start_timer(self):
+        self.timer.start()
+
+    def stop_timer(self):
+        self.timer.stop()
+        self.window['-TIME-'].update(self.timer.get_current())
+        self.window['-TIMELIST-'].update('\n'.join(self.timer.get_all()))
+        self.window['-AVG-'].update(
+            'Average time: ' + self.timer.get_average())
+
+    def reset_timer(self):
+        self.timer.reset()
+        self.stop_timer()
 
 
-def main():
-    gui = GUI(IrisDataset())
+def main(debug):
+    gui = GUI(IrisDataset(), debug_mode=debug)
     while True:
-        event, values = gui.window.read()
+        event, values = gui.window.read(timeout=1000)
+        gui.update_timer()
         if event == sg.WIN_CLOSED:
             break
         # Draw column
@@ -259,7 +313,7 @@ def main():
             gui.undo()
         elif event in ('Redo', 'y:89'):
             gui.redo()
-        elif event == 'Reset':
+        elif event == '-RESETMASK-':
             gui.reset_mask()
         elif event == '-ALPHA-':  # Mask alpha slider
             gui.update_alpha(values['-ALPHA-'])
@@ -272,21 +326,30 @@ def main():
             gui.next()
         elif event == 'Save':
             gui.save()
+        # Timer
+        elif event == 'Start':
+            gui.start_timer()
+        elif event == 'Stop':
+            gui.stop_timer()
+        elif event == 's':
+            if gui.timer.has_started():
+                gui.stop_timer()
+            else:
+                gui.start_timer()
+        elif event == '-RESETTIMER-':
+            gui.reset_timer()
         # Image
         elif event == '-IMAGE-':
             gui.click_image(values['-IMAGE-'])
         elif event == '-IMAGE-+UP':
             gui.mouse_up()
+        elif event == '__TIMEOUT__':  # Supress prints
+            pass
         else:
             if gui.debug_mode:
                 print(event)
-        # TODO measure time per image
-
-        if gui.check_status():
-            # TODO What to do if all images have been checked
-            pass
     gui.window.close()
 
 
 if __name__ == '__main__':
-    main()
+    main(debug=False)
