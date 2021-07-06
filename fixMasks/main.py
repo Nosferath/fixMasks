@@ -9,23 +9,6 @@ import PySimpleGUI as sg
 from iris import IrisDataset, IrisImage
 
 
-# class TempImage:
-#     def __init__(self, filename='temp'):
-#         self.iris = None
-#         self.filename = filename
-#         if not self.filename.endswith('.png'):
-#             self.filename += '.png'
-#
-#     def set_iris(self, iris: IrisImage):
-#         self.iris = iris
-#
-#     def update(self):
-#         if self.iris is None:
-#             img = np.zeros((80, 480, 3))
-#         else:
-#             img = self.iris.get_visualization()
-#         return img.tobytes()
-
 def image_to_bytes(image):
     """Converts a PIL image to bytes."""
     with io.BytesIO() as output:
@@ -39,6 +22,8 @@ def image_to_bytes(image):
 
 class Timer:
     def __init__(self):
+        """Timer and tracker of previous times. Includes multiple
+        functions for getting statistics about the tracked times."""
         self._times = []
         self._start_t = None
 
@@ -58,24 +43,25 @@ class Timer:
             self._start_t = None
 
     def reset(self):
+        """Deletes all previous times, resetting the timer."""
         self._times = []
         self._start_t = None
 
     @staticmethod
-    def _format_time(seconds):
+    def _format_time(seconds) -> str:
         """Returns the time formatted as hh:mm:ss"""
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
         seconds = int(seconds % 60)
         return '{:02n}:{:02n}:{:02n}'.format(hours, minutes, seconds)
 
-    def get_average(self):
+    def get_average(self) -> str:
         """Returns the average of all times, formatted."""
-        if len(self._times):
+        if self._times:
             return self._format_time(np.mean(self._times))
         return self._format_time(0)
 
-    def get_current(self):
+    def get_current(self) -> str:
         """Returns the current elapsed time, formatted."""
         if self._start_t is not None:
             return self._format_time(time.time() - self._start_t)
@@ -85,9 +71,15 @@ class Timer:
         """Returns a list with all times, formatted."""
         return [self._format_time(s) for s in self._times]
 
-    def has_started(self):
+    def has_started(self) -> bool:
         """Return True if the timer has been started"""
         return self._start_t is not None
+
+    def get_eta(self, n: int):
+        """Get ETA for n images, based on average time."""
+        if self._times:
+            return self._format_time(np.mean(self._times) * n)
+        return self._format_time(0)
 
 
 class CheckedText(sg.T):
@@ -118,7 +110,10 @@ class GUI:
         timer_menu = [
             [sg.T('00:00:00', font=('Helvetica', 30), key='-TIME-')],
             [sg.T('Average time: 00:00:00', s=(20, 1), key='-AVG-')],
-            [sg.B('Start'), sg.B('Stop'), sg.B('Reset', key='-RESETTIMER-')],
+            [sg.T('ETA: 00:00:00', s=(20, 1), key='-ETA-')],
+            [sg.B('Start', tooltip='Hotkey: s'),
+             sg.B('Stop', tooltip='Hotkey: s'),
+             sg.B('Reset', key='-RESETTIMER-')],
             [sg.Multiline('', s=(20, 13), write_only=True, key='-TIMELIST-')]
         ]
         draw_column = [
@@ -137,11 +132,13 @@ class GUI:
                 'Autosave', default=True, key='-AUTO-',
                 tooltip='Save all changes to mask array '
                         '(does not save to disk)'
-            )]
+            )],
+            [sg.Checkbox('Checked', enable_events=True, key='-CHECKBOX-')]
         ]
         nav_column2 = [
             [sg.Checkbox('0', key='-SKIP0-'), sg.Checkbox('1', key='-SKIP1-'),
-             sg.Checkbox('2', key='-SKIP2-')]
+             sg.Checkbox('2', key='-SKIP2-')],
+            [sg.Checkbox('Checked', key='-SKIPC-')]
         ]
         nav_column = [
             *nav_column1,
@@ -153,7 +150,9 @@ class GUI:
         layout = [
             [sg.T('Current image: None.\tScore: None.\t   0/0', s=(40, 1),
                   key='-NAME-'),
-             CheckedText(), sg.T('', text_color='#00FF00', key='-FINISHED-')],
+             CheckedText(), sg.T('{} remaining'.format(
+                self.dataset.get_remaining_images()), key='-REMAINING-'),
+             sg.T('', s=(20, 1), text_color='#00FF00', key='-FINISHED-')],
             [sg.Graph((960, 160), (0, 80), (480, 0), drag_submits=True,
                       enable_events=True, key='-IMAGE-')],
             [sg.Column(
@@ -167,6 +166,7 @@ class GUI:
                                 finalize=True, return_keyboard_events=True)
         # Set mouse bindings
         self.window['-IMAGE-'].bind('<Button-3>', '+RIGHT')
+        # Wheel binding no longer needed
         # self.window['-IMAGE-'].bind('<MouseWheel>', '+WHEEL')
         # Initialize dataset and image
         self.next()
@@ -188,6 +188,7 @@ class GUI:
             + '\t   ' + self.dataset.get_cur_position()
         )
         self.window['-CHECKED-'].set_checked(self.dataset.is_image_checked())
+        self.window['-CHECKBOX-'].update(self.dataset.is_image_checked())
         # Set original image
         data = image_to_bytes(self.dataset.get_original_image())
         self.window['-ORIGINAL-'].update(data=data)
@@ -198,19 +199,18 @@ class GUI:
         for key, value in d.items():
             if self.window[key].get():
                 skip.append(d[key])
-        if len(skip) == 3:
-            print('[WARNING] Cannot skip all values. Treating as None.')
-            skip = []
         return skip
 
     def next(self):
         skip = self.get_skips()
-        self.image = self.dataset.next(skip)
+        skip_checked = self.window['-SKIPC-'].get()
+        self.image = self.dataset.next(skip, skip_checked)
         self.update_image()
 
     def previous(self):
         skip = self.get_skips()
-        self.image = self.dataset.previous(skip)
+        skip_checked = self.window['-SKIPC-'].get()
+        self.image = self.dataset.previous(skip, skip_checked)
         self.update_image()
 
     def update_alpha(self, value):
@@ -268,35 +268,58 @@ class GUI:
         self.dataset.reset_mask()
         self.update_image()
 
-    def save(self):
+    def save(self, from_exit=False):
         """(On button click) Saves the status of the masks to disk."""
+        if from_exit:
+            self.dataset.save(checked=False, to_disk=True)
+            return
         if not self.debug_mode:
             self.dataset.save()
         else:
             self.dataset.save(to_disk=False)
             print('[DEBUG] Save triggered.')
         self.update_image()
+        # Update remaining images number
+        self.window['-REMAINING-'].update('{} remaining'.format(
+            self.dataset.get_remaining_images()))
+        # Check and display if any image types are finished
         fnshd = [str(i) for i in range(3) if self.check_status([i])]
         if fnshd:
             self.window['-FINISHED-'].update('FINISHED: ' + ','.join(fnshd))
 
     def update_timer(self):
+        """Updates the displayed timer when a timer has been started.
+        Called in each window update.
+        """
         if self.timer.has_started():
             self.window['-TIME-'].update(self.timer.get_current())
 
     def start_timer(self):
+        """Starts the timer."""
         self.timer.start()
 
     def stop_timer(self):
+        """Stops the timer and updates timer visualizations."""
         self.timer.stop()
         self.window['-TIME-'].update(self.timer.get_current())
         self.window['-TIMELIST-'].update('\n'.join(self.timer.get_all()))
         self.window['-AVG-'].update(
             'Average time: ' + self.timer.get_average())
+        self.window['-ETA-'].update(
+            'ETA: ' + self.timer.get_eta(self.dataset.get_remaining_images())
+        )
 
     def reset_timer(self):
+        """Resets the timer (and updates visualizations)."""
         self.timer.reset()
-        self.stop_timer()
+        self.stop_timer()  # For update
+
+    def check_image(self):
+        """Sets the image as checked or unchecked based on the checkbox
+        status. Triggered by clicking the checkbox."""
+        checked = self.window['-CHECKBOX-'].get()
+        self.dataset.set_checked(checked)
+        self.update_image()
 
 
 def main(debug):
@@ -305,6 +328,7 @@ def main(debug):
         event, values = gui.window.read(timeout=1000)
         gui.update_timer()
         if event == sg.WIN_CLOSED:
+            gui.save(from_exit=True)
             break
         # Draw column
         elif event in ('Draw', 'Erase', '-IMAGE-+RIGHT'):
@@ -326,6 +350,8 @@ def main(debug):
             gui.next()
         elif event == 'Save':
             gui.save()
+        elif event == '-CHECKBOX-':
+            gui.check_image()
         # Timer
         elif event == 'Start':
             gui.start_timer()

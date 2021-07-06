@@ -204,31 +204,57 @@ class IrisDataset:
             np.savez_compressed(_MASKS_FILE, masks=self.masks)
             self.df.to_csv(_CHECK_MASKS_CSV)
 
-    def next(self, skip: list = None):
-        """Returns the next Iris Image. If a skip list is supplied,
-        images with a score that is on the list will be skipped.
+    def set_checked(self, value: bool):
+        """Sets the checked status of the current image to value."""
+        self.df.loc[self.cur, 'checked'] = value
+
+    def check_skip(self, skip: list, skip_checked: bool):
+        """Checks if there are images available considering the skip
+        list. If the result is False, trying to skip would result in an
+        infinite loop.
         """
-        if self._first:
+        not_skipped = ~self.df.score.isin(skip)
+        if skip_checked:
+            not_skipped = not_skipped & ~self.df.checked
+        return sum(not_skipped) > 0
+
+    def next(self, skip: list = None, skip_checked=False):
+        """Returns the next Iris Image. If a skip list is supplied,
+        images with a score that is on the list will be skipped. If skip
+        _checked is true, checked images will be skipped.
+        """
+        if self._first:  # Initialize
             self._first = False
             return self.get_irisimage()
         self.cur = (self.cur + 1) % self.n_images
-        if skip is not None:
-            while self.df.score.loc[self.cur] in skip:
-                self.cur = (self.cur + 1) % self.n_images
+        # Sanity check
+        if not self.check_skip(skip, skip_checked):
+            print("[WARNING] All images would be skipped. Ignoring skip.")
+            return self.get_irisimage()
+        # Apply skips
+        while self.df.score.loc[self.cur] in skip or \
+                self.df.checked.loc[self.cur] and skip_checked:
+            self.cur = (self.cur + 1) % self.n_images
 
         return self.get_irisimage()
 
-    def previous(self, skip: list = None):
+    def previous(self, skip: list = None, skip_checked=False):
         """Returns the previous Iris Image. If a skip list is supplied,
-        images with a score that is on the list will be skipped.
+        images with a score that is on the list will be skipped. If skip
+        _checked is true, checked images will be skipped.
         """
-        if self._first:
+        if self._first:  # Initialize
             self._first = False
             return self.get_irisimage()
         self.cur = (self.cur - 1) % self.n_images
-        if skip is not None:
-            while self.df.score.loc[self.cur] in skip:
-                self.cur = (self.cur - 1) % self.n_images
+        # Sanity check
+        if not self.check_skip(skip, skip_checked):
+            print("[WARNING] All images would be skipped. Ignoring skip.")
+            return self.get_irisimage()
+        # Apply skips
+        while self.df.score.loc[self.cur] in skip or \
+                self.df.checked.loc[self.cur] and skip_checked:
+            self.cur = (self.cur - 1) % self.n_images
 
         return self.get_irisimage()
 
@@ -256,4 +282,9 @@ class IrisDataset:
         return Image.open(path / filename)
 
     def get_cur_position(self):
+        """Returns a string with current position."""
         return '{:04n}/{}'.format(self.cur + 1, self.n_images)
+
+    def get_remaining_images(self):
+        """Returns the number of images not marked as checked"""
+        return sum(self.df.checked == False)
