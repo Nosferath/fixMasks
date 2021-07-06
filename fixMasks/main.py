@@ -319,6 +319,10 @@ class GUI:
         status. Triggered by clicking the checkbox."""
         checked = self.window['-CHECKBOX-'].get()
         self.dataset.set_checked(checked)
+        # Update remaining images number
+        self.window['-REMAINING-'].update('{} remaining'.format(
+            self.dataset.get_remaining_images()))
+
         self.update_image()
 
 
