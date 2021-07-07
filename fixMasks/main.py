@@ -81,6 +81,10 @@ class Timer:
             return self._format_time(np.mean(self._times) * n)
         return self._format_time(0)
 
+    def remove_last(self):
+        """Remove the last recorded time."""
+        self._times.pop()
+
 
 class CheckedText(sg.T):
     def __init__(self):
@@ -113,7 +117,8 @@ class GUI:
             [sg.T('ETA: 00:00:00', s=(20, 1), key='-ETA-')],
             [sg.B('Start', tooltip='Hotkey: s'),
              sg.B('Stop', tooltip='Hotkey: s'),
-             sg.B('Reset', key='-RESETTIMER-')],
+             sg.B('Reset', key='-RESETTIMER-'),
+             sg.B('-', key='-REMOVELAST-')],
             [sg.Multiline('', s=(20, 13), write_only=True, key='-TIMELIST-')]
         ]
         draw_column = [
@@ -314,6 +319,11 @@ class GUI:
         self.timer.reset()
         self.stop_timer()  # For update
 
+    def remove_last(self):
+        """Removes the last recorded time (and updates visualizations).
+        """
+        self.timer.remove_last()
+
     def check_image(self):
         """Sets the image as checked or unchecked based on the checkbox
         status. Triggered by clicking the checkbox."""
@@ -368,6 +378,8 @@ def main(debug):
                 gui.start_timer()
         elif event == '-RESETTIMER-':
             gui.reset_timer()
+        elif event == '-REMOVELAST-':
+            gui.remove_last()
         # Image
         elif event == '-IMAGE-':
             gui.click_image(values['-IMAGE-'])
@@ -379,6 +391,7 @@ def main(debug):
             if gui.debug_mode:
                 print(event)
     gui.window.close()
+    # TODO button to remove last time
 
 
 if __name__ == '__main__':
