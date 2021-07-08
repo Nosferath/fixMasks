@@ -323,6 +323,7 @@ class GUI:
         """Removes the last recorded time (and updates visualizations).
         """
         self.timer.remove_last()
+        self.stop_timer()
 
     def check_image(self):
         """Sets the image as checked or unchecked based on the checkbox
@@ -391,7 +392,6 @@ def main(debug):
             if gui.debug_mode:
                 print(event)
     gui.window.close()
-    # TODO button to remove last time
 
 
 if __name__ == '__main__':
