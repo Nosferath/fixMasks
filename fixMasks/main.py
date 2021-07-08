@@ -292,20 +292,15 @@ class GUI:
         if fnshd:
             self.window['-FINISHED-'].update('FINISHED: ' + ','.join(fnshd))
 
-    def update_timer(self):
+    def update_running_timer(self):
         """Updates the displayed timer when a timer has been started.
         Called in each window update.
         """
         if self.timer.has_started():
             self.window['-TIME-'].update(self.timer.get_current())
 
-    def start_timer(self):
-        """Starts the timer."""
-        self.timer.start()
-
-    def stop_timer(self):
-        """Stops the timer and updates timer visualizations."""
-        self.timer.stop()
+    def update_timer_elements(self):
+        """Updates the time, the time list, the average and the ETA."""
         self.window['-TIME-'].update(self.timer.get_current())
         self.window['-TIMELIST-'].update('\n'.join(self.timer.get_all()))
         self.window['-AVG-'].update(
@@ -314,16 +309,25 @@ class GUI:
             'ETA: ' + self.timer.get_eta(self.dataset.get_remaining_images())
         )
 
+    def start_timer(self):
+        """Starts the timer."""
+        self.timer.start()
+
+    def stop_timer(self):
+        """Stops the timer and updates timer visualizations."""
+        self.timer.stop()
+        self.update_timer_elements()
+
     def reset_timer(self):
         """Resets the timer (and updates visualizations)."""
         self.timer.reset()
-        self.stop_timer()  # For update
+        self.update_timer_elements()
 
     def remove_last(self):
         """Removes the last recorded time (and updates visualizations).
         """
         self.timer.remove_last()
-        self.stop_timer()
+        self.update_timer_elements()
 
     def check_image(self):
         """Sets the image as checked or unchecked based on the checkbox
@@ -333,15 +337,15 @@ class GUI:
         # Update remaining images number
         self.window['-REMAINING-'].update('{} remaining'.format(
             self.dataset.get_remaining_images()))
-
         self.update_image()
+        self.update_timer_elements()
 
 
 def main(debug):
     gui = GUI(IrisDataset(), debug_mode=debug)
     while True:
         event, values = gui.window.read(timeout=1000)
-        gui.update_timer()
+        gui.update_running_timer()
         if event == sg.WIN_CLOSED:
             gui.save(from_exit=True)
             break
