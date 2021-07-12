@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 import PySimpleGUI as sg
 
-from iris import IrisDataset, IrisImage
+from iris import IrisDataset, IrisImage, _OSIRIS_SHAPE
 
 
 def image_to_bytes(image):
@@ -152,14 +152,18 @@ class GUI:
         orig_column = [
             [sg.Image(key='-ORIGINAL-')]
         ]
+        # Sizes for the canvas
+        y, x = _OSIRIS_SHAPE
+        self.canv_h = 2 * y
+        self.canv_w = 2 * x
         layout = [
             [sg.T('Current image: None.\tScore: None.\t   0/0', s=(40, 1),
                   key='-NAME-'),
              CheckedText(), sg.T('{} remaining'.format(
                 self.dataset.get_remaining_images()), key='-REMAINING-'),
              sg.T('', s=(20, 1), text_color='#00FF00', key='-FINISHED-')],
-            [sg.Graph((960, 160), (0, 80), (480, 0), drag_submits=True,
-                      enable_events=True, key='-IMAGE-')],
+            [sg.Graph((self.canv_w, self.canv_h), (0, y), (x, 0),
+                      drag_submits=True, enable_events=True, key='-IMAGE-')],
             [sg.Column(
                 [[sg.Frame('Draw tools', draw_column, vertical_alignment='t'),
                   sg.Column(nav_column, vertical_alignment='t')],
@@ -181,7 +185,8 @@ class GUI:
         self.window['-IMAGE-'].delete_figure(self.drawn_image)
         # Convert image to Bytes64
         image = self.image.get_visualization(self.alpha)
-        image = Image.fromarray(image).resize((960, 160), Image.NEAREST)
+        image = Image.fromarray(image).resize((self.canv_w, self.canv_h),
+                                              Image.NEAREST)
         data = image_to_bytes(image)
         # Set image and text
         self.drawn_image = self.window['-IMAGE-'].draw_image(
