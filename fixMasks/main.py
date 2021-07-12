@@ -115,8 +115,8 @@ class GUI:
             [sg.T('00:00:00', font=('Helvetica', 30), key='-TIME-')],
             [sg.T('Average time: 00:00:00', s=(20, 1), key='-AVG-')],
             [sg.T('ETA: 00:00:00', s=(20, 1), key='-ETA-')],
-            [sg.B('Start', tooltip='Hotkey: s'),
-             sg.B('Stop', tooltip='Hotkey: s'),
+            [sg.B('Start'),
+             sg.B('Stop'),
              sg.B('Reset', key='-RESETTIMER-'),
              sg.B('-', key='-REMOVELAST-')],
             [sg.Multiline('', s=(20, 13), write_only=True, key='-TIMELIST-')]
@@ -143,7 +143,7 @@ class GUI:
         nav_column2 = [
             [sg.Checkbox('0', key='-SKIP0-'), sg.Checkbox('1', key='-SKIP1-'),
              sg.Checkbox('2', key='-SKIP2-')],
-            [sg.Checkbox('Checked', key='-SKIPC-')]
+            [sg.Checkbox('Checked', default=True, key='-SKIPC-')]
         ]
         nav_column = [
             *nav_column1,
@@ -177,7 +177,6 @@ class GUI:
         self.next()
 
     def update_image(self):
-        # if self.drawn_image is not None:
         # Delete previous figure to prevent memory leak
         self.window['-IMAGE-'].delete_figure(self.drawn_image)
         # Convert image to Bytes64
@@ -329,10 +328,15 @@ class GUI:
         self.timer.remove_last()
         self.update_timer_elements()
 
-    def check_image(self):
+    def check_image(self, force_check=False):
         """Sets the image as checked or unchecked based on the checkbox
-        status. Triggered by clicking the checkbox."""
-        checked = self.window['-CHECKBOX-'].get()
+        status. Triggered by clicking the checkbox. If force_check is
+        True, acts as if the box has been checked."""
+        if not force_check:
+            checked = self.window['-CHECKBOX-'].get()
+        else:
+            checked = True
+            self.window['-CHECKBOX-'].update(True)
         self.dataset.set_checked(checked)
         # Update remaining images number
         self.window['-REMAINING-'].update('{} remaining'.format(
@@ -379,6 +383,8 @@ def main(debug):
         elif event == 's':
             if gui.timer.has_started():
                 gui.stop_timer()
+                gui.check_image(force_check=True)
+                gui.next()
             else:
                 gui.start_timer()
         elif event == '-RESETTIMER-':
