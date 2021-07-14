@@ -151,7 +151,6 @@ class IrisDataset:
         self.cur = None
         for i in range(self.n_images):
             if not self.df.checked.loc[i]:
-                # Index is set -1, so next image is the right one
                 self.cur = i
                 break
         self._first = True  # Next image will be the first since init
