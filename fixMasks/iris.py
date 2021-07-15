@@ -204,8 +204,13 @@ class IrisDataset:
             self.df.to_csv(_CHECK_MASKS_CSV)
 
     def set_checked(self, value: bool):
-        """Sets the checked status of the current image to value."""
+        """Sets the checked status of the current image to value. Having
+        the image checked must also correspond to the mask being saved
+        to self.masks array.
+        """
         self.df.loc[self.cur, 'checked'] = value
+        if value:
+            self.save(to_disk=False)
 
     def check_skip(self, skip: list, skip_checked: bool):
         """Checks if there are images available considering the skip

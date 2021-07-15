@@ -276,6 +276,7 @@ class GUI:
         """Resets the current mask to its original state."""
         self.dataset.reset_mask()
         self.update_image()
+        self.mouse_up()
 
     def save(self, from_exit=False):
         """(On button click) Saves the status of the masks to disk."""
