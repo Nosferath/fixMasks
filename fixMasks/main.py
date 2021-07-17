@@ -280,6 +280,7 @@ class GUI:
 
     def save(self, from_exit=False):
         """(On button click) Saves the status of the masks to disk."""
+        # TODO change save button behavior to not check the image
         if from_exit:
             self.dataset.save(checked=False, to_disk=True)
             return
