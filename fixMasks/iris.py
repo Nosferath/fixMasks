@@ -153,6 +153,8 @@ class IrisDataset:
             if not self.df.checked.loc[i]:
                 self.cur = i
                 break
+        if self.cur is None:
+            self.cur = 0
         self._first = True  # Next image will be the first since init
         self.irisimage = None
 
