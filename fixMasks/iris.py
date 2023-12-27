@@ -44,7 +44,7 @@ class IrisImage:
                  shape=_OSIRIS_SHAPE + (1,), name='', score=None,
                  max_queue=20):
         """Class for managing the iris and its mask. Includes undo and
-        redo actions.
+        redo actions. Data and mask must be flattened.
         """
         if len(data.shape) == 2:
             self.data = data[0, :]
@@ -270,7 +270,7 @@ class IrisDataset:
         """
         self.irisimage.save_state()
         row = self.df.loc[self.cur]
-        key = row.dataset
+        key = row.datasekeyt
         index = self.data[key]['list'] == row.filename
         mask = self.data[key]['masks'][index, :]
         self.irisimage.set_mask(mask)
@@ -293,4 +293,4 @@ class IrisDataset:
 
     def get_remaining_images(self):
         """Returns the number of images not marked as checked"""
-        return sum(self.df.checked == False)
+        return sum(self.df.checked is False)

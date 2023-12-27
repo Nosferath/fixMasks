@@ -181,6 +181,7 @@ class GUI:
         self.next()
 
     def update_image(self):
+        # TODO refactor function so it does only one thing
         # Delete previous figure to prevent memory leak
         self.window['-IMAGE-'].delete_figure(self.drawn_image)
         # Convert image to Bytes64
@@ -279,13 +280,16 @@ class GUI:
         self.mouse_up()
 
     def save(self, from_exit=False):
-        """(On button click) Saves the status of the masks to disk."""
-        # TODO change save button behavior to not check the image
-        if from_exit:
+        """(On button click) Saves the status of the masks to disk.
+        Previously it checked the current image on button press. This
+        behavior is deprecated.
+        """
+        if from_exit:  # Not from button press
             self.dataset.save(checked=False, to_disk=True)
             return
+        # From button press
         if not self.debug_mode:
-            self.dataset.save()
+            self.dataset.save(checked=False, to_disk=True)
         else:
             self.dataset.save(to_disk=False)
             print('[DEBUG] Save triggered.')
@@ -348,6 +352,10 @@ class GUI:
         # Update remaining images number
         self.window['-REMAINING-'].update('{} remaining'.format(
             self.dataset.get_remaining_images()))
+        # Check and display if any image types are finished
+        fnshd = [str(i) for i in range(3) if self.check_status([i])]
+        if fnshd:
+            self.window['-FINISHED-'].update('FINISHED: ' + ','.join(fnshd))
         self.update_image()
         self.update_timer_elements()
 
