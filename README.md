@@ -17,4 +17,4 @@ Scripts included in the `utils.py` file are not part of the main project and are
 There may be things missing or not working properly, as this was a quick project that I made for my own use. Feel free to use it and modify it as you wish. Additionally, I am willing to offer support and help with any issues that may arise, in case you want to use this tool.
 
 ## License
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details. Also you can cite my work if you find it useful (to be updated once the manuscript is published).
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details. Also you can cite my work if you find it useful: [Impact of Occlusion Masks on Gender Classification from Iris Texture](https://doi.org/10.1049/2024/8526857).
